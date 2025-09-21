@@ -1,87 +1,93 @@
+let canvas = document.querySelector('#main-canvas');
+let ctx = canvas.getContext('2d');
+ctx.canvas.width = window.innerWidth - 10;
+ctx.canvas.height = window.innerHeight - 10;
+
+// audio context setup
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
 const context = new AudioContext();
-const source = context.createBufferSource();
 const analyser = context.createAnalyser();
 analyser.fftSize = 2048;
 const data = new Uint8Array(analyser.frequencyBinCount);
 
-let canvas = document.querySelector('#main-canvas');
-let ctx = canvas.getContext('2d');
-ctx.canvas.width =  window.innerWidth - 10;
-ctx.canvas.height = window.innerHeight - 10;
+let buffer = null;
+let source = null;
+let startedAt;
+let pausedAt;
+let paused = true;
 
+// decode audio
 const decodeAudio = async (url) => {
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
     return await context.decodeAudioData(arrayBuffer);
 }
 
-let buffer = null;
-decodeAudio("https://corsproxy.io/?url=" + encodeURIComponent('https://audio-download.ngfiles.com/549000/549201_Lightforce-S.mp3')).then((b) => {
+// load mp3
+decodeAudio("https://corsproxy.io/?url=" + encodeURIComponent(
+    'https://audio-download.ngfiles.com/549000/549201_Lightforce-S.mp3'
+)).then((b) => {
     buffer = b;
 });
 
-source.connect(analyser);
-analyser.connect(context.destination);
+// draw frequency
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-function createSource() {
-    const source = context.createBufferSource();
+    analyser.getByteFrequencyData(data);
+
+    ctx.strokeStyle = `white`;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height);
+
+    for (let i = 0; i < data.length; i++) {
+        const value = data[i] / 256; // normalize
+        const y = canvas.height - canvas.height * value;
+        ctx.lineTo(i, y);
+    }
+
+    ctx.stroke();
+
+    requestAnimationFrame(draw);
+}
+
+// play audio
+function play() {
+    source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
     analyser.connect(context.destination);
-    return source;
+
+    paused = false;
+
+    if (pausedAt) {
+        startedAt = Date.now() - pausedAt;
+        source.start(0, pausedAt / 1000);
+    } else {
+        startedAt = Date.now();
+        source.start(0);
+    }
+
+    draw();
 }
 
-function draw() {
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
-	
-	// our analyser will put frequency info into our data aray
-	analyser.getByteFrequencyData(data);
-	
-	ctx.strokeStyle = `white`;
-	ctx.beginPath();
-	ctx.moveTo(0, canvas.height);
-	
-	for (let i = 0; i < data.length; i++) {
-		// data[i] is the amplitude height
-		// we normalize it like below:
-		const value = data[i] / 1024;
-		
-		const y = canvas.height - canvas.height * value;
-
-		ctx.lineTo(i, y);
-	}
-	
-	ctx.stroke();
-	
-	requestAnimationFrame(draw);
+// stop/pause audio
+function stop() {
+    if (source) {
+        source.stop(0);
+        pausedAt = Date.now() - startedAt;
+        paused = true;
+    }
 }
 
-let isPlaying = false;
-let playbackStart = 0;
-let pausedAt = 0;
-let currentSource = null;
-
+// toggle play/pause on click
 canvas.addEventListener('click', async () => {
-	if (!buffer) return;
-	if (!isPlaying) {
-		if (context.state === 'suspended') {
-			await context.resume();
-		}
-		currentSource = createSource();
-		currentSource.start(0, pausedAt);
-		playbackStart = context.currentTime - pausedAt;
-		isPlaying = true;
-		draw();
-		currentSource.onended = () => {
-			isPlaying = false;
-			pausedAt = 0;
-			currentSource = null;
-		};
-	} else {
-		currentSource.stop();
-		pausedAt = context.currentTime - playbackStart;
-		currentSource = null;
-		isPlaying = false;
-	}
+    if (paused) {
+        if (context.state === 'suspended') {
+            await context.resume();
+        }
+        play();
+    } else {
+        stop();
+    }
 });
