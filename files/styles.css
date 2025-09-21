@@ -1,0 +1,10 @@
+body {
+    background-color: black;
+    color: white;
+    margin: 0;
+}
+
+canvas {
+    position: absolute;
+    z-index: 21390; /* one zillion */
+}
